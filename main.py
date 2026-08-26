@@ -3,10 +3,9 @@ import uvicorn
 import numpy as np
 from io import BytesIO
 from PIL import Image
-# اصلاح نحوه ایمپورت برای دسترسی درست به کلاس Interpreter
 import ai_edge_litert.interpreter as litert 
 
-# لود کردن مدل با آدرس‌دهی تصحیح شده پکیج لایت
+# لود کردن مدل سبک
 interpreter = litert.Interpreter(model_path="model.tflite")
 interpreter.allocate_tensors()
 
@@ -21,7 +20,12 @@ async def ping():
     return "Hello I am Rohullah"
 
 def read_file_as_image(data) -> np.ndarray:
-    image = Image.open(BytesIO(data)).resize((256, 256))
+    # ۱. تبدیل تصویر به حالت ۳ کاناله استاندارد (RGB) برای جلوگیری از خطای تصاویر شفاف یا PNG
+    image = Image.open(BytesIO(data)).convert("RGB")
+    # ۲. تغییر سایز دقیق به ۲۵۶ در ۲۵۶
+    image = image.resize((256, 256))
+    
+    # ۳. تبدیل به آرایه با فرمت float32 که مدل لایت دقیقاً همین را درخواست میکند
     img_array = np.array(image, dtype=np.float32)
     return img_array
 
@@ -30,12 +34,13 @@ async def predict(file: UploadFile = File(...)):
     image = read_file_as_image(await file.read())
     img_batch = np.expand_dims(image, 0)
     
+    # اجرای مدل بدون خطای ناهمخوانی فرمت آرایه
     interpreter.set_tensor(input_details['index'], img_batch)
     interpreter.invoke()
     pred = interpreter.get_tensor(output_details['index'])
     
-    predicted_class = CLASS_NAMES[np.argmax(pred)]
-    confidence = np.max(pred)  
+    predicted_class = CLASS_NAMES[np.argmax(pred[0])]
+    confidence = np.max(pred[0])  
     
     return {
         "Class": predicted_class, 
