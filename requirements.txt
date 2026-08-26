@@ -2,4 +2,4 @@ fastapi
 uvicorn
 pillow
 python-multipart
-tensorflow-cpu
+ai-edge-litert
