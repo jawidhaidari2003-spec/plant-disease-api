@@ -1,12 +1,13 @@
 from fastapi import FastAPI, File, UploadFile
 import uvicorn
 import numpy as np
-import tensorflow as tf
 from io import BytesIO
 from PIL import Image
+# استفاده از کتابخانه فوق سبک جدید گوگل به جای تنسورفلو سنگین
+import ai_edge_litert as litert 
 
-# لود کردن مدل فوق‌سبک TFLite (این دستور رم سرور را پر نمی‌کند)
-interpreter = tf.lite.Interpreter(model_path="model.tflite")
+# لود کردن مدل با ابزار سبک لایت‌آرتی
+interpreter = litert.Interpreter(model_path="model.tflite")
 interpreter.allocate_tensors()
 
 input_details = interpreter.get_input_details()
@@ -20,7 +21,6 @@ async def ping():
     return "Hello I am Rohullah"
 
 def read_file_as_image(data) -> np.ndarray:
-    # تغییر اندازه عکس به سایز استاندارد ۲۵۶ در ۲۵۶ که برای مدل‌های سی‌ان‌ان رایج است
     image = Image.open(BytesIO(data)).resize((256, 256))
     img_array = np.array(image, dtype=np.float32)
     return img_array
@@ -30,10 +30,9 @@ async def predict(file: UploadFile = File(...)):
     image = read_file_as_image(await file.read())
     img_batch = np.expand_dims(image, 0)
     
-    # اجرای مدل لایت
-    interpreter.set_tensor(input_details['index'], img_batch)
+    interpreter.set_tensor(input_details[0]['index'], img_batch)
     interpreter.invoke()
-    pred = interpreter.get_tensor(output_details['index'])
+    pred = interpreter.get_tensor(output_details[0]['index'])
     
     predicted_class = CLASS_NAMES[np.argmax(pred)]
     confidence = np.max(pred)  
@@ -44,4 +43,4 @@ async def predict(file: UploadFile = File(...)):
     }
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=10000, reload=False)
