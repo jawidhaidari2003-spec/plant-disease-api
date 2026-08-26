@@ -11,7 +11,10 @@ interpreter.allocate_tensors()
 
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
-input_shape = input_details[0]['shape'] # خواندن ابعاد دقیق مورد نیاز مدل شما
+
+# استخراج دقیق طول و عرض مورد نیاز مدل از روی ساختار تنسور ورودی
+# برای مثال اگر شکل ورودی [1, 256, 256, 3] باشد، مقادیر 256 استخراج می‌شوند
+_, target_height, target_width, _ = input_details[0]['shape']
 
 CLASS_NAMES = ["Early Blight", "Late Blight", "Healthy"]
 app = FastAPI()
@@ -21,14 +24,13 @@ async def ping():
     return "Hello I am Rohullah"
 
 def read_file_as_image(data) -> np.ndarray:
-    # ۱. تبدیل عکس به ۳ کانال رنگی استاندارد برای جلوگیری از خطای تصاویر شفاف
+    # ۱. تبدیل عکس به ۳ کانال رنگی استاندارد (RGB)
     image = Image.open(BytesIO(data)).convert("RGB")
     
-    # ۲. تغییر سایز پویا بر اساس ابعادی که مدل CNN شما به آن نیاز دارد (مثلاً 256x256)
-    target_size = (input_shape[1], input_shape[2])
-    image = image.resize(target_size)
+    # ۲. تغییر سایز دقیق عکس بر اساس طول و عرض مورد نیاز مدل تو
+    image = image.resize((target_width, target_height))
     
-    # ۳. تبدیل به آرایه اعشاری و تقسیم بر ۲۵۵ برای نرمال‌سازی بین ۰ و ۱
+    # ۳. تبدیل به آرایه اعشاری و نرمال‌سازی پیکسل‌ها بین ۰ و ۱
     img_array = np.array(image, dtype=np.float32) / 255.0
     return img_array
 
@@ -36,14 +38,10 @@ def read_file_as_image(data) -> np.ndarray:
 async def predict(file: UploadFile = File(...)):
     image = read_file_as_image(await file.read())
     
-    # اضافه کردن بعد دسته‌ای (Batch Dimension) به آرایه عکس
+    # اضافه کردن بعد Batch به آرایه عکس
     img_batch = np.expand_dims(image, axis=0)
     
-    # تنظیم مجدد اندازه تنسور ورودی برای همخوانی ۱۰۰ درصدی با ابعاد آرایه فرستاده شده
-    interpreter.resize_tensor_input(input_details[0]['index'], img_batch.shape)
-    interpreter.allocate_tensors()
-    
-    # اجرای مدل روی عکس بدون خطا
+    # اجرای سریع مدل لایت
     interpreter.set_tensor(input_details[0]['index'], img_batch)
     interpreter.invoke()
     pred = interpreter.get_tensor(output_details[0]['index'])
