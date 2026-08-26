@@ -3,10 +3,10 @@ import uvicorn
 import numpy as np
 from io import BytesIO
 from PIL import Image
-# استفاده از کتابخانه فوق سبک جدید گوگل به جای تنسورفلو سنگین
-import ai_edge_litert as litert 
+# اصلاح نحوه ایمپورت برای دسترسی درست به کلاس Interpreter
+import ai_edge_litert.interpreter as litert 
 
-# لود کردن مدل با ابزار سبک لایت‌آرتی
+# لود کردن مدل با آدرس‌دهی تصحیح شده پکیج لایت
 interpreter = litert.Interpreter(model_path="model.tflite")
 interpreter.allocate_tensors()
 
@@ -30,9 +30,9 @@ async def predict(file: UploadFile = File(...)):
     image = read_file_as_image(await file.read())
     img_batch = np.expand_dims(image, 0)
     
-    interpreter.set_tensor(input_details[0]['index'], img_batch)
+    interpreter.set_tensor(input_details['index'], img_batch)
     interpreter.invoke()
-    pred = interpreter.get_tensor(output_details[0]['index'])
+    pred = interpreter.get_tensor(output_details['index'])
     
     predicted_class = CLASS_NAMES[np.argmax(pred)]
     confidence = np.max(pred)  
