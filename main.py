@@ -14,31 +14,22 @@ CLASS_NAMES = [
     "Healthy"
 ]
 
-# ۱. بارگذاری مدل با غیرفعال کردن XNNPack برای جلوگیری از خطای رندر
+# بارگذاری مدل در حالت کاملاً استاندارد بدون هیچ دستکاری ابعاد
 interpreter = litert.Interpreter(
-    model_path="model.tflite",
-    experimental_delegates=[]
+    model_path="model.tflite"
 )
+interpreter.allocate_tensors()
 
-# ۲. گرفتن اطلاعات ورودی و خروجی اولیه
+# اطلاعات ورودی و خروجی مدل
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
-# ۳. استخراج ابعاد اصلی مدل برای ریسایز کردن تصاویر ورودی
+# استخراج ابعاد قفل شده مدل (مثلاً 32, 256, 256, 3)
 input_shape = input_details[0]["shape"]
+model_batch_size = int(input_shape[0])  # این عدد 32 است
 target_height = int(input_shape[1])
 target_width = int(input_shape[2])
 input_dtype = input_details[0]["dtype"]
-
-# ۴. تغییر داینامیک بچ‌سایز مدل از 32 به 1
-new_input_shape = [1, target_height, target_width, input_shape[3]]
-interpreter.resize_tensor_input(input_details[0]["index"], new_input_shape)
-
-# ۵. مقداردهی مجدد تانسورها پس از تغییر ابعاد (حیاتی برای لایت‌آرتی)
-interpreter.allocate_tensors()
-
-# ۶. به روز رسانی اطلاعات ورودی پس از اعمال تغییر ابعاد
-input_details = interpreter.get_input_details()
 
 
 @app.get("/")
@@ -56,12 +47,11 @@ def read_file_as_image(data):
         BytesIO(data)
     ).convert("RGB")
 
-    # Resize به اندازه مورد نیاز مدل
+    # ریسایز تصویر به ابعاد مدل
     image = image.resize(
         (target_width, target_height)
     )
 
-    # تبدیل به NumPy بدون تقسیم بر 255
     img_array = np.array(
         image,
         dtype=np.float32
@@ -73,57 +63,45 @@ def read_file_as_image(data):
 async def predict(file: UploadFile = File(...)):
 
     try:
-        # بررسی اینکه فایل واقعاً عکس باشد
         if file.content_type and not file.content_type.startswith("image/"):
             return JSONResponse(
                 status_code=400,
-                content={
-                    "error": "Please upload an image file"
-                }
+                content={"error": "Please upload an image file"}
             )
 
-        # خواندن عکس
         file_data = await file.read()
-
-        # آماده‌سازی عکس
         image = read_file_as_image(file_data)
 
-        # اضافه کردن Batch Dimension
-        img_batch = np.expand_dims(
-            image,
-            axis=0
-        )
+        # ساخت یک آرایه خالی با بچ‌سایز دقیق مدل (مثلاً 32 عکس)
+        # این کار جلوی خطای Dimension Mismatch را به صورت 100٪ می‌گیرد
+        full_batch = np.zeros(input_shape, dtype=np.float32)
+        
+        # قرار دادن عکس کاربر در اولین خانه از 32 خانه
+        full_batch[0] = image
 
-        # تبدیل dtype در صورت نیاز
-        img_batch = img_batch.astype(input_dtype)
+        # تبدیل نوع داده به نوع مورد نیاز مدل
+        full_batch = full_batch.astype(input_dtype)
 
-        # اجرای مدل
+        # اجرای مدل روی بچ کامل
         interpreter.set_tensor(
             input_details[0]["index"],
-            img_batch
+            full_batch
         )
 
         interpreter.invoke()
 
-        # گرفتن پیش‌بینی
+        # گرفتن خروجی پیش‌بینی‌ها
         predictions = interpreter.get_tensor(
             output_details[0]["index"]
         )
 
-        # گرفتن کلاس
-        predicted_index = int(
-            np.argmax(predictions[0])
-        )
+        # ما فقط به نتیجه عکس اول (خانه 0) نیاز داریم
+        first_image_predictions = predictions[0]
 
-        predicted_class = CLASS_NAMES[
-            predicted_index
-        ]
-
-        # Confidence
-        confidence = round(
-            float(np.max(predictions[0])) * 100,
-            2
-        )
+        # پیدا کردن کلاس و درصد اطمینان
+        predicted_index = int(np.argmax(first_image_predictions))
+        predicted_class = CLASS_NAMES[predicted_index]
+        confidence = round(float(np.max(first_image_predictions)) * 100, 2)
 
         return {
             "class": predicted_class,
@@ -131,12 +109,8 @@ async def predict(file: UploadFile = File(...)):
         }
 
     except Exception as e:
-
         print(f"PREDICTION ERROR: {str(e)}")
-
         return JSONResponse(
             status_code=500,
-            content={
-                "error": str(e)
-            }
+            content={"error": str(e)}
         )
