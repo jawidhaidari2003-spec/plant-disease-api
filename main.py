@@ -1,11 +1,22 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
+# ۱. اضافه شدن این کتابخانه برای حل مشکل CORS
+from fastapi.middleware.cors import CORSMiddleware 
 import numpy as np
 from io import BytesIO
 from PIL import Image
 import ai_edge_litert.interpreter as litert
 
 app = FastAPI()
+
+# ۲. پیکربندی CORS: این بخش را دقیقاً زیر تعریف app قرار دادم تا قفل دسترسی مرورگر باز شود
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # به تمام دامنه‌ها از جمله لوکال‌هاست اکسپو اجازه دسترسی می‌دهد
+    allow_credentials=True,
+    allow_methods=["*"],  # اجازه متدهای POST, GET, OPTIONS و...
+    allow_headers=["*"],  # اجازه ارسال تمام هدرها
+)
 
 # ترتیب کلاس‌ها باید دقیقاً مطابق ترتیب dataset.class_names باشد
 CLASS_NAMES = [
@@ -73,7 +84,6 @@ async def predict(file: UploadFile = File(...)):
         image = read_file_as_image(file_data)
 
         # ساخت یک آرایه خالی با بچ‌سایز دقیق مدل (مثلاً 32 عکس)
-        # این کار جلوی خطای Dimension Mismatch را به صورت 100٪ می‌گیرد
         full_batch = np.zeros(input_shape, dtype=np.float32)
         
         # قرار دادن عکس کاربر در اولین خانه از 32 خانه
