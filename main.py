@@ -14,31 +14,30 @@ CLASS_NAMES = [
     "Healthy"
 ]
 
-# بارگذاری مدل
+# ۱. بارگذاری مدل با غیرفعال کردن XNNPack برای جلوگیری از خطای رندر
 interpreter = litert.Interpreter(
-    model_path="model.tflite"
+    model_path="model.tflite",
+    experimental_delegates=[]
 )
 
-# اطلاعات ورودی و خروجی اولیه
+# ۲. گرفتن اطلاعات ورودی و خروجی اولیه
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
-# اندازه ورودی اصلی مدل (مثلاً)
+# ۳. استخراج ابعاد اصلی مدل برای ریسایز کردن تصاویر ورودی
 input_shape = input_details[0]["shape"]
-
 target_height = int(input_shape[1])
 target_width = int(input_shape[2])
 input_dtype = input_details[0]["dtype"]
 
-# تغییر بچ‌سایز به 1 به جای 32
-# ورودی جدید می‌شود: [1, target_height, target_width, 3]
+# ۴. تغییر داینامیک بچ‌سایز مدل از 32 به 1
 new_input_shape = [1, target_height, target_width, input_shape[3]]
 interpreter.resize_tensor_input(input_details[0]["index"], new_input_shape)
 
-# حتماً بعد از تغییر سایز باید متد زیر دوباره صدا زده شود
+# ۵. مقداردهی مجدد تانسورها پس از تغییر ابعاد (حیاتی برای لایت‌آرتی)
 interpreter.allocate_tensors()
 
-# گرفتن اطلاعات جدید ورودی پس از آپدیت سایز
+# ۶. به روز رسانی اطلاعات ورودی پس از اعمال تغییر ابعاد
 input_details = interpreter.get_input_details()
 
 
@@ -62,9 +61,7 @@ def read_file_as_image(data):
         (target_width, target_height)
     )
 
-    # تبدیل به NumPy
-    # تقسیم بر 255 نمی‌کنیم
-    # چون Rescaling داخل خود مدل وجود دارد
+    # تبدیل به NumPy بدون تقسیم بر 255
     img_array = np.array(
         image,
         dtype=np.float32
