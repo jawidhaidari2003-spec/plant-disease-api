@@ -19,20 +19,28 @@ interpreter = litert.Interpreter(
     model_path="model.tflite"
 )
 
-interpreter.allocate_tensors()
-
-# اطلاعات ورودی و خروجی
+# اطلاعات ورودی و خروجی اولیه
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
-# اندازه ورودی مدل
+# اندازه ورودی اصلی مدل (مثلاً)
 input_shape = input_details[0]["shape"]
 
 target_height = int(input_shape[1])
 target_width = int(input_shape[2])
-
-# نوع داده‌ای که مدل TFLite انتظار دارد
 input_dtype = input_details[0]["dtype"]
+
+# تغییر بچ‌سایز به 1 به جای 32
+# ورودی جدید می‌شود: [1, target_height, target_width, 3]
+new_input_shape = [1, target_height, target_width, input_shape[3]]
+interpreter.resize_tensor_input(input_details[0]["index"], new_input_shape)
+
+# حتماً بعد از تغییر سایز باید متد زیر دوباره صدا زده شود
+interpreter.allocate_tensors()
+
+# گرفتن اطلاعات جدید ورودی پس از آپدیت سایز
+input_details = interpreter.get_input_details()
+
 
 @app.get("/")
 async def home():
