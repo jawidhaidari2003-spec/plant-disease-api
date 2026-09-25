@@ -119,6 +119,8 @@ def read_file_as_image(data):
         dtype=np.float32
     )
 
+    image_array = image_array / 255.0
+
     return image_array
 
 def prepare_input(image):
