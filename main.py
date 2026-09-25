@@ -24,15 +24,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.abspath(
     os.path.join(
         BASE_DIR,
-        "..",
-        "models",
         "plant_disease_model.tflite"
     )
 )
 
 DATA_PATH = os.path.join(
     BASE_DIR,
-    "data",
     "disease_info.json"
 )
 
