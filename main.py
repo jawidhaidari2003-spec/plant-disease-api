@@ -50,7 +50,7 @@ with open(
 ) as f:
     disease_info = json.load(f)
 
-CLASS_NAMES = list(
+CLASS_NAMES = sorted(
     disease_info.keys()
 )
 
