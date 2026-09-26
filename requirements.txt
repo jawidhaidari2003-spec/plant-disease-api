@@ -3,4 +3,4 @@ uvicorn
 numpy
 pillow
 python-multipart
-ai-edge-litert
+tensorflow-cpu
