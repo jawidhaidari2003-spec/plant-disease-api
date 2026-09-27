@@ -6,11 +6,11 @@ import numpy as np
 from PIL import Image
 import io
 import os
-import tflite_runtime.interpreter as tflite
+import tensorflow as tf  # 👈 لود مستقیم از هسته اصلی برای فهمیدن لایه ورژن ۱۲
 
 app = FastAPI(title="Plant Disease API")
 
-# تنظیمات CORS برای فرانت‌اند و اپلیکیشن
+# تنظیمات CORS برای دسترسی بدون محدودیت اپلیکیشن موبایل و وب
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,7 +19,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ۱. خواندن فایل‌های برچسب و اطلاعات فارسی بیماری‌ها
+# ۱. خواندن فایل‌های متنی کلاس‌ها و جزئیات بیماری
 with open('labels.txt', 'r', encoding='utf-8') as f:
     class_names = [line.strip() for line in f.readlines()]
 
@@ -28,13 +28,13 @@ with open('disease_info.json', 'r', encoding='utf-8') as f:
 
 MODEL_PATH = "plant_disease_model.tflite"
 
-# ۲. راه‌اندازی اینترپرتر مدل به صورت داینامیک و امن
+# ۲. راه‌اندازی امن اینترپرتر با متد رسمی تنسورفلو (حل مشکل FULLY_CONNECTED ورژن ۱۲)
 try:
-    interpreter = tflite.Interpreter(model_path=MODEL_PATH)
+    interpreter = tf.lite.Interpreter(model_path=MODEL_PATH)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
-    print("✅ SUCCESS: TFLite Interpreter allocated successfully on Render!")
+    print("✅ SUCCESS: TFLite Interpreter allocated successfully via TensorFlow-CPU!")
 except Exception as e:
     print(f"❌ CRITICAL ERROR DURING INTERPRETER ALLOCATION: {str(e)}")
     raise e
@@ -46,29 +46,29 @@ def home():
 @app.post("/predict")
 async def predict_disease(file: UploadFile = File(...)):
     try:
-        # ۳. خواندن و تغییر ابعاد عکس ورودی
+        # ۳. دریافت و آماده‌سازی تصویر
         image_data = await file.read()
         image = Image.open(io.BytesIO(image_data)).convert('RGB')
         image = image.resize((128, 128))
         
-        # تبدیل به آرایه اعشاری
+        # تبدیل به آرایه عددی
         img_array = np.array(image, dtype=np.float32)
         
-        # اعمال دقیق فرمول نرمالایزیشن موبایل‌نت (بین ۱- و ۱)
+        # فرمول استاندارد نرمالایزیشن
         img_array = (img_array / 127.5) - 1.0
         img_array = np.expand_dims(img_array, axis=0) 
 
-        # 👈 ۴. اجرای استنتاج روی مدل TFLite با اعمال ایندکس درست عنصر اول [0]
+        # ۴. اجرای پردازش روی مدل
         interpreter.set_tensor(input_details[0]['index'], img_array)
         interpreter.invoke()
         predictions = interpreter.get_tensor(output_details[0]['index'])[0] 
 
-        # پیدا کردن بهترین کلاس و درصد اطمینان
+        # پیدا کردن خروجی نهایی
         predicted_class_index = np.argmax(predictions)
         confidence = float(predictions[predicted_class_index]) * 100
         predicted_class_name = class_names[predicted_class_index] 
 
-        # استخراج اطلاعات فارسی بیماری از فایل JSON
+        # گرفتن توضیحات فارسی
         info = disease_info.get(predicted_class_name, {"description": "اطلاعاتی برای این بیماری یافت نشد."}) 
 
         return {
