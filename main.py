@@ -5,6 +5,7 @@ import json
 import numpy as np
 from PIL import Image
 import io
+import os
 import tflite_runtime.interpreter as tflite
 
 app = FastAPI(title="Plant Disease API")
@@ -17,16 +18,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# خواندن برچسب‌ها
 with open('labels.txt', 'r', encoding='utf-8') as f:
     class_names = [line.strip() for line in f.readlines()]
 
+# خواندن اطلاعات بیماری‌ها
 with open('disease_info.json', 'r', encoding='utf-8') as f:
     disease_info = json.load(f)
 
-interpreter = tflite.Interpreter(model_path="plant_disease_model.tflite")
-interpreter.allocate_tensors()
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
+MODEL_PATH = "plant_disease_model.tflite"
+
+# 🟢 بررسی هوشمند حجم فایل برای مچ شدن کامل با سیستم رندر و جلوگیری از لود فایل خراب
+if os.path.exists(MODEL_PATH):
+    file_size_mb = os.path.getsize(MODEL_PATH) / (1024 * 1024)
+    print(f"--- 📊 Current TFLite Model Size: {file_size_mb:.2f} MB ---")
+    if file_size_mb < 1.0:
+        print("❌ CRITICAL WARNING: The model file is too small! GitHub uploaded a Git LFS text pointer instead of the 8MB binary.")
+else:
+    print("❌ CRITICAL ERROR: plant_disease_model.tflite NOT FOUND in root directory!")
+
+# لود کردن مدل لایت به صورت امن
+try:
+    interpreter = tflite.Interpreter(model_path=MODEL_PATH)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+    print("✅ SUCCESS: TFLite Interpreter allocated successfully on Render!")
+except Exception as e:
+    print(f"❌ CRITICAL ERROR DURING INTERPRETER ALLOCATION: {str(e)}")
+    raise e
 
 @app.get("/")
 def home():
@@ -42,12 +62,12 @@ async def predict_disease(file: UploadFile = File(...)):
         # تبدیل به آرایه اعشاری
         img_array = np.array(image, dtype=np.float32)
         
-        # اصلاح حیاتی: اعمال دقیق فرمول نرمالایزیشن موبایل‌نت روی پیکسل‌ها
+        # اعمال دقیق فرمول نرمالایزیشن موبایل‌نت روی پیکسل‌ها
         img_array = (img_array / 127.5) - 1.0
         
         img_array = np.expand_dims(img_array, axis=0) 
 
-        # اجرای مدل TFLite
+        # 🟢 اجرای مدل TFLite با ساختار داینامیک و امن (بدون ایندکس ثابت)
         interpreter.set_tensor(input_details[0]['index'], img_array)
         interpreter.invoke()
         predictions = interpreter.get_tensor(output_details[0]['index'])[0] 
