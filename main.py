@@ -24,7 +24,7 @@ with open('labels.txt', 'r', encoding='utf-8') as f:
 with open('disease_info.json', 'r', encoding='utf-8') as f:
     disease_info = json.load(f)
 
-# ۲. لود کردن مدل ONNX (بدون کوچکترین ارور ورژن لایه)
+# ۲. لود کردن مدل ONNX (بدون ارور ورژن لایه)
 MODEL_PATH = "plant_model.onnx"
 try:
     session = ort.InferenceSession(MODEL_PATH)
@@ -71,3 +71,4 @@ async def predict_disease(file: UploadFile = File(...)):
         } 
     except Exception as e:
         return {"status": "error", "message": f"داداش مشکلی پیش آمد: {str(e)}"}
+
