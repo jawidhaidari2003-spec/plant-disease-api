@@ -3,4 +3,4 @@ uvicorn
 python-multipart
 Pillow
 numpy<2.0.0
-tensorflow-cpu==2.14.0
+onnxruntime
