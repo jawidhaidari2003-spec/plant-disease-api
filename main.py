@@ -58,10 +58,10 @@ async def predict_disease(file: UploadFile = File(...)):
         img_array = (img_array / 127.5) - 1.0
         img_array = np.expand_dims(img_array, axis=0) 
 
-        # ۴. اجرای استنتاج روی مدل TFLite
-        interpreter.set_tensor(input_details['index'], img_array)
+        # 👈 ۴. اجرای استنتاج روی مدل TFLite با اعمال ایندکس درست عنصر اول [0]
+        interpreter.set_tensor(input_details[0]['index'], img_array)
         interpreter.invoke()
-        predictions = interpreter.get_tensor(output_details['index']) 
+        predictions = interpreter.get_tensor(output_details[0]['index'])[0] 
 
         # پیدا کردن بهترین کلاس و درصد اطمینان
         predicted_class_index = np.argmax(predictions)
