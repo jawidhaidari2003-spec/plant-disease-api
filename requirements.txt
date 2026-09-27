@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-ai-edge-litert
-pillow
-numpy
 python-multipart
+Pillow
+numpy
+tflite-runtime
