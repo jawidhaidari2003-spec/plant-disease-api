@@ -1,14 +1,12 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
 import json
 import numpy as np
 from PIL import Image
 import io
-import os
-import tensorflow as tf  # 👈 لود مستقیم از هسته اصلی برای فهمیدن لایه ورژن ۱۲
+import onnxruntime as ort
 
-app = FastAPI(title="Plant Disease API")
+app = FastAPI(title="Plant Disease ONNX API")
 
 # تنظیمات CORS برای دسترسی بدون محدودیت اپلیکیشن موبایل و وب
 app.add_middleware(
@@ -26,22 +24,19 @@ with open('labels.txt', 'r', encoding='utf-8') as f:
 with open('disease_info.json', 'r', encoding='utf-8') as f:
     disease_info = json.load(f)
 
-MODEL_PATH = "plant_disease_model.tflite"
-
-# ۲. راه‌اندازی امن اینترپرتر با متد رسمی تنسورفلو (حل مشکل FULLY_CONNECTED ورژن ۱۲)
+# ۲. لود کردن مدل ONNX (بدون کوچکترین ارور ورژن لایه)
+MODEL_PATH = "plant_model.onnx"
 try:
-    interpreter = tf.lite.Interpreter(model_path=MODEL_PATH)
-    interpreter.allocate_tensors()
-    input_details = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
-    print("✅ SUCCESS: TFLite Interpreter allocated successfully via TensorFlow-CPU!")
+    session = ort.InferenceSession(MODEL_PATH)
+    input_name = session.get_inputs()[0].name
+    print("✅ SUCCESS: ONNX Model loaded perfectly on Render!")
 except Exception as e:
-    print(f"❌ CRITICAL ERROR DURING INTERPRETER ALLOCATION: {str(e)}")
+    print(f"❌ ERROR LOADING ONNX MODEL: {str(e)}")
     raise e
 
 @app.get("/")
 def home():
-    return {"message": "داداش، سرور تشخیص بیماری گیاهان با قدرت روشنه!"}
+    return {"message": "داداش، سرور هوشمند گیاه‌پزشکی با قدرت روشنه!"}
 
 @app.post("/predict")
 async def predict_disease(file: UploadFile = File(...)):
@@ -51,21 +46,18 @@ async def predict_disease(file: UploadFile = File(...)):
         image = Image.open(io.BytesIO(image_data)).convert('RGB')
         image = image.resize((128, 128))
         
-        # تبدیل به آرایه عددی
         img_array = np.array(image, dtype=np.float32)
         
-        # فرمول استاندارد نرمالایزیشن
+        # فرمول استاندارد نرمالایزیشن موبایل‌نت (بین ۱- و ۱)
         img_array = (img_array / 127.5) - 1.0
         img_array = np.expand_dims(img_array, axis=0) 
 
-        # ۴. اجرای پردازش روی مدل
-        interpreter.set_tensor(input_details[0]['index'], img_array)
-        interpreter.invoke()
-        predictions = interpreter.get_tensor(output_details[0]['index'])[0] 
+        # ۴. اجرای استنتاج روی مدل انیکس
+        raw_preds = session.run(None, {input_name: img_array})[0][0]
 
         # پیدا کردن خروجی نهایی
-        predicted_class_index = np.argmax(predictions)
-        confidence = float(predictions[predicted_class_index]) * 100
+        predicted_class_index = np.argmax(raw_preds)
+        confidence = float(raw_preds[predicted_class_index]) * 100
         predicted_class_name = class_names[predicted_class_index] 
 
         # گرفتن توضیحات فارسی
@@ -78,4 +70,4 @@ async def predict_disease(file: UploadFile = File(...)):
             "details": info
         } 
     except Exception as e:
-        return {"status": "error", "message": f"داداش یه مشکلی پیش اومد: {str(e)}"}
+        return {"status": "error", "message": f"داداش مشکلی پیش آمد: {str(e)}"}
