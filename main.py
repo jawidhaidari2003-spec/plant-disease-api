@@ -4,11 +4,12 @@ import json
 import numpy as np
 from PIL import Image
 import io
-import onnxruntime as ort
+import tensorflow as tf
+import os
 
-app = FastAPI(title="Plant Disease ONNX API")
+app = FastAPI(title="Plant Disease API")
 
-# تنظیمات CORS برای دسترسی اپلیکیشن موبایل و وب بدون محدودیت
+# تنظیمات CORS برای اتصال اپلیکیشن موبایل به سرور
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,65 +18,68 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ۱. خواندن فایل‌های متنی کلاس‌ها و دیتابیس توضیحات فارسی
-with open('labels.txt', 'r', encoding='utf-8') as f:
-    class_names = [line.strip() for line in f.readlines()]
-
-with open('disease_info.json', 'r', encoding='utf-8') as f:
-    disease_info = json.load(f)
-
-# ۲. لود کردن مدل انیکس
-MODEL_PATH = "plant_model.onnx"
+# ۱. لود کردن اسم بیماری‌ها به صورت ایمن
 try:
-    session = ort.InferenceSession(MODEL_PATH)
-    input_name = session.get_inputs()[0].name
-    print("✅ SUCCESS: ONNX Model loaded perfectly on Render!")
+    with open('labels.txt', 'r', encoding='utf-8') as f:
+        class_names = [line.strip() for line in f.readlines() if line.strip()]
 except Exception as e:
-    print(f"❌ ERROR LOADING ONNX MODEL: {str(e)}")
-    raise e
+    print("ارور در خواندن labels.txt:", e)
+    class_names = []
+
+# ۲. لود کردن اطلاعات بیماری‌ها از فایل جیسون
+try:
+    if os.path.exists('disease_info.json'):
+        with open('disease_info.json', 'r', encoding='utf-8') as f:
+            disease_info = json.load(f)
+    else:
+        disease_info = {}
+except:
+    disease_info = {}
+
+# ۳. لود کردن مدل با تنسورفلو جدید (حل مشکل ورژن ۱۲)
+interpreter = tf.lite.Interpreter(model_path="plant_disease_model.tflite")
+interpreter.allocate_tensors()
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
 
 @app.get("/")
 def home():
-    return {"message": "داداش، سرور هوشمند گیاه‌پزشکی با قدرت روشنه!"}
+    return {"message": "داداش، سرور تشخیص بیماری گیاهان با قدرت روشنه!"}
 
 @app.post("/predict")
 async def predict_disease(file: UploadFile = File(...)):
     try:
-        # ۳. دریافت و آماده‌سازی تصویر
+        # دریافت عکس از کاربر
         image_data = await file.read()
         image = Image.open(io.BytesIO(image_data)).convert('RGB')
+        
+        # تغییر سایز به ۱۲۸ در ۱۲۸ (دقیقا مثل زمان آموزش)
         image = image.resize((128, 128))
         
+        # پیش‌پردازش حیاتی برای MobileNetV2
         img_array = np.array(image, dtype=np.float32)
-        
-        # نرمالایزیشن استاندارد موبایل‌نت کدهای آموزش شما (بردن پیکسل‌ها بین ۱- و ۱)
-        img_array = (img_array / 127.5) - 1.0
+        img_array = (img_array / 127.5) - 1.0  # همون فرمول طلایی که خروجی رو درست میکنه
         img_array = np.expand_dims(img_array, axis=0) 
 
-        # ۴. اجرای استنتاج روی مدل انیکس
-        raw_preds = session.run(None, {input_name: img_array})
+        # فرستادن عکس به داخل مدل
+        interpreter.set_tensor(input_details[0]['index'], img_array)
+        interpreter.invoke()
+        predictions = interpreter.get_tensor(output_details[0]['index'])[0] 
 
-        # 🟢 اصلاح حیاتی و طلایی: استخراج لایه اول خروجی آرایه برای شکستن قفل خروجی Unknown
-        # مدل‌های خروجی کراس به انیکس، آرایه احتمالات را به صورت یک لیست سه بعدی یا دو بعدی برمی‌گردانند
-        predictions = np.squeeze(raw_preds[0])
-
-        # پیدا کردن بهترین کلاس واقعی خروجی
-        predicted_class_index = int(np.argmax(predictions))
-        confidence = float(predictions[predicted_class_index])
+        # پیدا کردن کلاسی که مدل بیشترین اطمینان رو بهش داره
+        predicted_class_index = np.argmax(predictions)
+        confidence = float(predictions[predicted_class_index]) * 100
         
-        # تبدیل خودکار به درصد اگر فرمت خروجی اعشاری زیر ۱ بود
-        if confidence <= 1.0:
-            confidence = confidence * 100
-            
-        predicted_class_name = class_names[predicted_class_index] 
+        # پیدا کردن اسم بیماری از روی عدد
+        if len(class_names) > predicted_class_index:
+            predicted_class_name = class_names[predicted_class_index]
+        else:
+            predicted_class_name = f"Class_{predicted_class_index}"
 
-        # گرفتن جزئیات فارسی از فایل JSON شما
-        info = disease_info.get(predicted_class_name, {
-            "نام بیماری": predicted_class_name,
-            "عامل بیماری": "مشخص نشده",
-            "علائم معمول": "توضیحی ثبت نشده است."
-        }) 
+        # استخراج اطلاعات اون بیماری از فایل جیسون
+        info = disease_info.get(predicted_class_name, {"description": "اطلاعاتی یافت نشد."}) 
 
+        # ارسال جواب نهایی
         return {
             "status": "success",
             "disease_name": predicted_class_name,
@@ -83,4 +87,4 @@ async def predict_disease(file: UploadFile = File(...)):
             "details": info
         } 
     except Exception as e:
-        return {"status": "error", "message": f"داداش مشکلی پیش آمد: {str(e)}"}
+        return {"status": "error", "message": f"داداش یه مشکلی پیش اومد: {str(e)}"}
