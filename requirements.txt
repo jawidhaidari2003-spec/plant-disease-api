@@ -2,5 +2,5 @@ fastapi
 uvicorn
 python-multipart
 Pillow
-numpy<2.0.0
-onnxruntime
+numpy
+tensorflow-cpu
