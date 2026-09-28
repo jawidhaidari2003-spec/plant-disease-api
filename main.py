@@ -36,7 +36,7 @@ try:
 except:
     disease_info = {}
 
-# ۳. لود کردن مدل با تنسورفلو جدید (حل مشکل ورژن ۱۲)
+# ۳. لود کردن مدل با تنسورفلو رسمی (سازگار با سرور Render)
 interpreter = tf.lite.Interpreter(model_path="plant_disease_model.tflite")
 interpreter.allocate_tensors()
 input_details = interpreter.get_input_details()
@@ -49,24 +49,32 @@ def home():
 @app.post("/predict")
 async def predict_disease(file: UploadFile = File(...)):
     try:
-        # دریافت عکس از کاربر
+        # ۱. نگهبان پسوند فایل (فقط اجازه میده این فرمت‌ها بیان داخل)
+        allowed_extensions = (".jpg", ".jpeg", ".png", ".jfif")
+        if not file.filename.lower().endswith(allowed_extensions):
+            return {
+                "status": "error", 
+                "message": "داداش فرمت فایل اشتباهه! لطفا فقط عکس با فرمت jpg, jpeg, png یا jfif بفرست."
+            }
+
+        # ۲. دریافت عکس از کاربر
         image_data = await file.read()
         image = Image.open(io.BytesIO(image_data)).convert('RGB')
         
-        # تغییر سایز به ۱۲۸ در ۱۲۸ (دقیقا مثل زمان آموزش)
+        # ۳. تغییر سایز به ۱۲۸ در ۱۲۸ 
         image = image.resize((128, 128))
         
-        # پیش‌پردازش حیاتی برای MobileNetV2
+        # ۴. پیش‌پردازش حیاتی برای MobileNetV2
         img_array = np.array(image, dtype=np.float32)
-        img_array = (img_array / 127.5) - 1.0  # همون فرمول طلایی که خروجی رو درست میکنه
+        img_array = (img_array / 127.5) - 1.0  
         img_array = np.expand_dims(img_array, axis=0) 
 
-        # فرستادن عکس به داخل مدل
+        # ۵. فرستادن عکس به داخل مدل
         interpreter.set_tensor(input_details[0]['index'], img_array)
         interpreter.invoke()
         predictions = interpreter.get_tensor(output_details[0]['index'])[0] 
 
-        # پیدا کردن کلاسی که مدل بیشترین اطمینان رو بهش داره
+        # ۶. پیدا کردن کلاسی که مدل بیشترین اطمینان رو بهش داره
         predicted_class_index = np.argmax(predictions)
         confidence = float(predictions[predicted_class_index]) * 100
         
